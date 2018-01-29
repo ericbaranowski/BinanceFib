@@ -121,8 +121,8 @@ while True:
             print "buy success. set sell trace. ", i['symbol'], now_price
             sell_trace.append(i)
             del i
-        if i['timeout'] <= 0:
-            print "timeout. ", i['symbol']
+        elif i['timeout'] <= 0:
+            print "timeout. buy", i['symbol']
             del i
 
     copy_trace = sell_trace
@@ -134,11 +134,11 @@ while True:
         if now_price >= good_sell_price:
             print i['symbol'], "GOOD SELL price :", now_price, "profit :", now_price - i['expect_buy_price']
             del i
-        if now_price <= bad_sell_price:
+        elif now_price <= bad_sell_price:
             print i['symbol'], "BAD SELL price :", now_price, "profit :", now_price - i['expect_buy_price']
             del i
-        if i['timeout'] <= 0:
-            print "timeout. ", i['symbol']
+        elif i['timeout'] <= 0:
+            print "timeout. sell", i['symbol']
             del i
 
         #if timeout : sell all
