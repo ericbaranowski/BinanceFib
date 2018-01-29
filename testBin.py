@@ -94,7 +94,7 @@ while True:
                                          'orderId': 1,
                                          'expect_buy_price': round(up * RETRACEMENT + start, 9),
                                          'prev_high': round(end, 9),
-                                         'timeout': 60 * 1 * 3}
+                                         'timeout': 60 * 60 * 1}
                                 buy_trace.append(trace)
                     #else:
                         #print "up up : ", symbol, up, float(start) * MELONA_FACTOR
@@ -112,6 +112,7 @@ while True:
     for i in copy_trace:
         now_price = getNowPrice(client, i['symbol'])
         i['timeout'] = i['timeout'] - 1
+        print "test", i['timeout']
         if now_price <= i['expect_buy_price']:
             # do buy
             print "buy success. ", i['symbol'], "buy price : ", now_price, "expect price", i['expect_buy_price']
