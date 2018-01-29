@@ -3,11 +3,11 @@ from binance.enums import *
 
 import ccxt
 import time
-MELONA_FACTOR = 0.07
+MELONA_FACTOR = 0.04
 HIGH_SELL_FACTOR = 0.8
 LOW_SELL_FACTOR = 0.45
 PROFIT = 1.1
-RETRACEMENT = 0.618
+RETRACEMENT = 0.5
 
 exchange = ccxt.binance()
 exchange_time = exchange.public_get_time()['serverTime']
@@ -30,10 +30,10 @@ client = Client(api_key, api_secret)
 def containCount(symbol, buy_trace, sell_trace):
     count = 0
     for i in buy_trace:
-        if i[0] == symbol:
+        if i['symbol'] == symbol:
             count = count + 1
     for i in sell_trace:
-        if i[0] == symbol:
+        if i['symbol'] == symbol:
             count = count + 1
     return count
 
@@ -51,11 +51,18 @@ def setTrace(orderId, buyPrice):
 def getNowPrice(client, symbol):
     return float(client.get_recent_trades(symbol=symbol)[1]['price'])
 
+def printTimestamp():
+    now = time.localtime()
+    s = "%04d-%02d-%02d %02d:%02d:%02d" % (now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec)
+    print s
+    return 0
+
 all_products = client.get_products()['data']
 btc_product = []
 buy_trace = []
 sell_trace = []
 time_count = 60
+timeout_count = 0
 
 for i in all_products:
     symbol = i['symbol']
@@ -66,69 +73,77 @@ while True:
     time_count = time_count + 1
     if time_count >= 55 :
         time_count = 0
-        now = time.localtime()
-        s = "%04d-%02d-%02d %02d:%02d:%02d" % (now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec)
-        print(s)
+
+        printTimestamp()
 
         for i in btc_product:
             symbol = i['symbol']
             history = client.get_historical_klines(symbol, Client.KLINE_INTERVAL_1HOUR, "4 hour ago UTC")
             if len(history) == 4:
-                start = float(history[0][3])
-                end = float(history[2][2])
+                start = round(float(history[0][3]), 9)
+                end = round(float(history[2][2]), 9)
                 up = end - start
-                new_end = float(history[3][2])
+                new_end = round(float(history[3][2]), 9)
 
-                if up > float(start) * MELONA_FACTOR:
+                if up > round(float(start) * MELONA_FACTOR, 9):
                     if isPos(history[0]) and isPos(history[1]) and isPos(history[2]) and not isPos(history[3]):
-                        print("3 Melona found : ", symbol, up, float(start) * MELONA_FACTOR)
+                        print "3 Melona found :", symbol, "up : %.8f" % up, "factor : %.8f" % round(float(start) * MELONA_FACTOR, 9)
                         if containCount(symbol, buy_trace, sell_trace) == 0:
-                            if up * RETRACEMENT + start < new_end:
-                                print("BUY(Limit) : ", up * RETRACEMENT + start, "Expect : ", )
-                                orderId = 1
-                                buy_trace.append([symbol, orderId, up * RETRACEMENT + start])
-                            else:
-                                print("BUY(Market) : ", new_end)
-                                sell_trace.append([symbol, new_end, end])
+                            if round(up * RETRACEMENT + start, 9) < new_end:
+                                print "set buy trace : %.8f" % round(up * RETRACEMENT + start, 9)
+                                trace = {'symbol': symbol,
+                                         'orderId': 1,
+                                         'expect_buy_price': round(up * RETRACEMENT + start, 9),
+                                         'prev_high': round(end, 9),
+                                         'timeout': 60 * 1 * 3}
+                                buy_trace.append(trace)
                     #else:
-                        #print("up up : ", symbol, up, float(start) * MELONA_FACTOR)
+                        #print "up up : ", symbol, up, float(start) * MELONA_FACTOR
             else:
-                print("num of history is not 4 : ", len(history))
+                print "num of history is not 4 : ", len(history)
 
-        print("product search done")
+        print "product search done"
 
     #for i in range(len(buy_trace), 0, -1):
         #orderId Trace, if success then append sell_trace
         #if timeout : cancel
     #test
 
-    for i in xrange(len(buy_trace) - 1, -1, -1):
-        now_price = getNowPrice(client, buy_trace[i][0])
-        print("buy", buy_trace[i][0], now_price, buy_trace[i][2])
-        if now_price >= buy_trace[i][2]:
-            sell_trace.append([buy_trace[i][0], buy_trace[i][2], 0])
-            del buy_trace[i]
+    copy_trace = buy_trace
+    for i in copy_trace:
+        now_price = getNowPrice(client, i['symbol'])
+        i['timeout'] = i['timeout'] - 1
+        if now_price <= i['expect_buy_price']:
+            # do buy
+            print "buy success. ", i['symbol'], "buy price : ", now_price, "expect price", i['expect_buy_price']
+            i['expect_buy_price'] = now_price
+            i['timeout'] = 60 * 60 * 3
+            print "buy success. set sell trace. ", i['symbol'], now_price
+            sell_trace.append(i)
+            del i
+        if i['timeout'] <= 0:
+            print "timeout. ", i['symbol']
+            del i
 
-    for i in xrange(len(sell_trace) - 1, -1, -1):
-        now_price = getNowPrice(client, sell_trace[i][0])
-        good_sell_price = max(sell_trace[i][2] * HIGH_SELL_FACTOR , sell_trace[i][1] * PROFIT)
-        bad_sell_price = sell_trace[i][2] * LOW_SELL_FACTOR
-
-        print("sell", sell_trace[i][0], sell_trace[i][2], now_price)
+    copy_trace = sell_trace
+    for i in copy_trace:
+        now_price = getNowPrice(client, i['symbol'])
+        good_sell_price = max(i['prev_high'] * HIGH_SELL_FACTOR , i['expect_buy_price'] * PROFIT)
+        bad_sell_price = i['prev_high'] * LOW_SELL_FACTOR
+        i['timeout'] = i['timeout'] - 1
         if now_price >= good_sell_price:
-            print(sell_trace[i][0], "GOOD SELL : ", now_price, now_price - sell_trace[i][1])
-            del sell_trace[i]
+            print i['symbol'], "GOOD SELL price :", now_price, "profit :", now_price - i['expect_buy_price']
+            del i
         if now_price <= bad_sell_price:
-            print(sell_trace[i][0], "BAD SELL : ", now_price, now_price - sell_trace[i][1])
-            del sell_trace[i]
+            print i['symbol'], "BAD SELL price :", now_price, "profit :", now_price - i['expect_buy_price']
+            del i
+        if i['timeout'] <= 0:
+            print "timeout. ", i['symbol']
+            del i
 
         #if timeout : sell all
 
     time.sleep(1)
-
-
-#print(client.get_historical_klines("ETHBTC", Client.KLINE_INTERVAL_1HOUR, "2 hour ago UTC"))
-#print(client.get_historical_klines("ETHBTC", Client.KLINE_INTERVAL_1HOUR, "1 hour ago UTC"))
 
 #order = client.create_test_order(
 #    symbol='BNBBTC',
@@ -137,7 +152,4 @@ while True:
 #    timeInForce=TIME_IN_FORCE_GTC,
 #    quantity=100,
 #    price='0.0000001')
-
-#def findMerona():
-#client.get_historical_klines("ETHBTC", Client.KLINE_INTERVAL_1HOUR, "2 hour ago UTC"))
 
