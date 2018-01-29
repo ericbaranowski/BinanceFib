@@ -62,7 +62,6 @@ btc_product = []
 buy_trace = []
 sell_trace = []
 time_count = 60
-timeout_count = 0
 
 for i in all_products:
     symbol = i['symbol']
