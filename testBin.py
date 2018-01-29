@@ -27,6 +27,16 @@ client = Client(api_key, api_secret)
 #    timeInForce=TIME_IN_FORCE_GTC,
 #    quantity=10,
 #    price='0.00020000')
+def containCount(symbol, buy_trace, sell_trace):
+    count = 0
+    for i in buy_trace:
+        if i[0] == symbol:
+            count = count + 1
+    for i in sell_trace:
+        if i[0] == symbol:
+            count = count + 1
+    return count
+
 
 def isPos(candle):
     if candle[1] < candle[4]:
@@ -72,15 +82,16 @@ while True:
                 if up > float(start) * MELONA_FACTOR:
                     if isPos(history[0]) and isPos(history[1]) and isPos(history[2]) and not isPos(history[3]):
                         print("3 Melona found : ", symbol, up, float(start) * MELONA_FACTOR)
-                        if up * RETRACEMENT + start < new_end:
-                            print("BUY(Limit) : ", up * RETRACEMENT + start, "Expect : ", )
-                            orderId = 1
-                            buy_trace.append([symbol, orderId, up * RETRACEMENT + start])
-                        else:
-                            print("BUY(Market) : ", new_end)
-                            sell_trace.append([symbol, new_end, end])
-                    else:
-                        print("up up : ", symbol, up, float(start) * MELONA_FACTOR)
+                        if containCount(symbol, buy_trace, sell_trace) == 0:
+                            if up * RETRACEMENT + start < new_end:
+                                print("BUY(Limit) : ", up * RETRACEMENT + start, "Expect : ", )
+                                orderId = 1
+                                buy_trace.append([symbol, orderId, up * RETRACEMENT + start])
+                            else:
+                                print("BUY(Market) : ", new_end)
+                                sell_trace.append([symbol, new_end, end])
+                    #else:
+                        #print("up up : ", symbol, up, float(start) * MELONA_FACTOR)
             else:
                 print("num of history is not 4 : ", len(history))
 
@@ -89,17 +100,26 @@ while True:
     #for i in range(len(buy_trace), 0, -1):
         #orderId Trace, if success then append sell_trace
         #if timeout : cancel
+    #test
 
-    for i in range(len(sell_trace), 0, -1):
-        now_price = getNowPrice(client, i[0])
-        good_sell_price = max(i[2] * HIGH_SELL_FACTOR , i[1] * PROFIT)
-        bad_sell_price = i[2] * LOW_SELL_FACTOR
+    for i in xrange(len(buy_trace) - 1, -1, -1):
+        now_price = getNowPrice(client, buy_trace[i][0])
+        print("buy", buy_trace[i][0], now_price, buy_trace[i][2])
+        if now_price >= buy_trace[i][2]:
+            sell_trace.append([buy_trace[i][0], buy_trace[i][2], 0])
+            del buy_trace[i]
 
+    for i in xrange(len(sell_trace) - 1, -1, -1):
+        now_price = getNowPrice(client, sell_trace[i][0])
+        good_sell_price = max(sell_trace[i][2] * HIGH_SELL_FACTOR , sell_trace[i][1] * PROFIT)
+        bad_sell_price = sell_trace[i][2] * LOW_SELL_FACTOR
+
+        print("sell", sell_trace[i][0], sell_trace[i][2], now_price)
         if now_price >= good_sell_price:
-            print(i[0], "GOOD SELL : ", now_price, now_price - i[1])
+            print(sell_trace[i][0], "GOOD SELL : ", now_price, now_price - sell_trace[i][1])
             del sell_trace[i]
-        if now_price <= LOW_SELL_FACTOR:
-            print(i[0], "BAD SELL : ", now_price, now_price - i[1])
+        if now_price <= bad_sell_price:
+            print(sell_trace[i][0], "BAD SELL : ", now_price, now_price - sell_trace[i][1])
             del sell_trace[i]
 
         #if timeout : sell all
