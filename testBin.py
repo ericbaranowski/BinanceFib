@@ -3,11 +3,14 @@ from binance.enums import *
 
 import ccxt
 import time
-MELONA_FACTOR = 0.04
+MELONA_FACTOR = 0.06
 HIGH_SELL_FACTOR = 0.8
-LOW_SELL_FACTOR = 0.45
+LOW_SELL_FACTOR = 0.4
 PROFIT = 1.1
-RETRACEMENT = 0.5
+LOSS = 0.9
+RETRACEMENT = 0.6
+
+#TODO 15minute
 
 exchange = ccxt.binance()
 exchange_time = exchange.public_get_time()['serverTime']
@@ -86,16 +89,18 @@ while True:
 
                 if up > round(float(start) * MELONA_FACTOR, 9):
                     if isPos(history[0]) and isPos(history[1]) and isPos(history[2]) and not isPos(history[3]):
-                        print "3 Melona found :", symbol, "up : %.8f" % up, "factor : %.8f" % round(float(start) * MELONA_FACTOR, 9)
+                        print "3 Melona found :", symbol, "up : %.8f" % up, "factor : %.8f" % round(float(start) * MELONA_FACTOR, 9), "/ expect to buy : %.8f" % round(up * RETRACEMENT + start, 9), "/ current : %.8f" % new_end
                         if containCount(symbol, buy_trace, sell_trace) == 0:
-                            if round(up * RETRACEMENT + start, 9) < new_end:
-                                print "set buy trace : %.8f" % round(up * RETRACEMENT + start, 9)
-                                trace = {'symbol': symbol,
-                                         'orderId': 1,
-                                         'expect_buy_price': round(up * RETRACEMENT + start, 9),
-                                         'prev_high': round(end, 9),
-                                         'timeout': 60 * 60 * 1}
-                                buy_trace.append(trace)
+                            #if round(up * RETRACEMENT + start, 9) < new_end:
+                            print "set", symbol ,"buy trace / expect to buy : %.8f" % round(up * RETRACEMENT + start, 9), "/ current : %.8f" % new_end
+                            trace = {'symbol': symbol,
+                                     'start': start,
+                                     'up': up,
+                                     'orderId': 1,
+                                     'expect_buy_price': round(up * RETRACEMENT + start, 9),
+                                     'prev_high': round(end, 9),
+                                     'timeout': 60 * 60 * 1}
+                            buy_trace.append(trace)
                     #else:
                         #print "up up : ", symbol, up, float(start) * MELONA_FACTOR
             else:
@@ -112,36 +117,38 @@ while True:
     for i in copy_trace:
         now_price = getNowPrice(client, i['symbol'])
         i['timeout'] = i['timeout'] - 1
-        print "test", i['timeout']
+        #print "buy", i['symbol'], "timeout", i['timeout'], "/ current price : %.8f" % now_price, "/ expect to buy price : %.8f" % i['expect_buy_price']
         if now_price <= i['expect_buy_price']:
-            # do buy
-            print "buy success. ", i['symbol'], "buy price : ", now_price, "expect price", i['expect_buy_price']
+            # do low buy
+            print "buy success.", i['symbol'], "/ buy price : %.8f" % now_price, "/ expect to buy price : %.8f" % i['expect_buy_price']
             i['expect_buy_price'] = now_price
             i['timeout'] = 60 * 60 * 3
-            print "buy success. set sell trace. ", i['symbol'], now_price
+            i['high_sell_price'] = max(i['up'] * HIGH_SELL_FACTOR + i['start'], i['expect_buy_price'] * PROFIT)
+            i['low_sell_price'] = min(i['up'] * LOW_SELL_FACTOR + i['start'], i['expect_buy_price'] * LOSS)
+            print "set sell trace.", i['symbol'], "/ expect to sell : %.8f" % i['high_sell_price']
             sell_trace.append(i)
-            del i
+            buy_trace.remove(i)
         elif i['timeout'] <= 0:
             print "timeout. buy", i['symbol']
-            del i
+            buy_trace.remove(i)
 
     copy_trace = sell_trace
     for i in copy_trace:
         now_price = getNowPrice(client, i['symbol'])
-        good_sell_price = max(i['prev_high'] * HIGH_SELL_FACTOR , i['expect_buy_price'] * PROFIT)
-        bad_sell_price = i['prev_high'] * LOW_SELL_FACTOR
         i['timeout'] = i['timeout'] - 1
-        if now_price >= good_sell_price:
-            print i['symbol'], "GOOD SELL price :", now_price, "profit :", now_price - i['expect_buy_price']
-            del i
-        elif now_price <= bad_sell_price:
-            print i['symbol'], "BAD SELL price :", now_price, "profit :", now_price - i['expect_buy_price']
-            del i
+        #print "sell", i['symbol'], "timeout", i['timeout'], "/ current price : %.8f" % now_price, "/ expect sell high_price : %.8f" % i['high_sell_price'], "/ expect sell low_price : %.8f" % i['low_sell_price']
+        if now_price >= i['high_sell_price']:
+            #do high sell
+            print "----------------------", i['symbol'], "GOOD SELL price :", now_price, "/ profit : %.8f" % (now_price - i['expect_buy_price'])
+            sell_trace.remove(i)
+        elif now_price <= i['low_sell_price']:
+            print "----------------------", i['symbol'], "BAD SELL price :", now_price, "/ profit : %.8f" % (now_price - i['expect_buy_price'])
+            sell_trace.remove(i)
         elif i['timeout'] <= 0:
+            #if timeout : sell all
             print "timeout. sell", i['symbol']
-            del i
+            sell_trace.remove(i)
 
-        #if timeout : sell all
 
     time.sleep(1)
 
