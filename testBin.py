@@ -6,11 +6,12 @@ import time
 MELONA_FACTOR = 0.06
 HIGH_SELL_FACTOR = 0.8
 LOW_SELL_FACTOR = 0.4
-PROFIT = 1.1
-LOSS = 0.9
+PROFIT = 1.03
+LOSS = 0.97
 RETRACEMENT = 0.6
 
-#TODO 15minute
+#MODE = 15
+MODE = 60
 
 exchange = ccxt.binance()
 exchange_time = exchange.public_get_time()['serverTime']
@@ -52,7 +53,7 @@ def setTrace(orderId, buyPrice):
     return False
 
 def getNowPrice(client, symbol):
-    return float(client.get_recent_trades(symbol=symbol)[1]['price'])
+    return float(client.get_recent_trades(symbol=symbol, limit=5)[1]['price'])
 
 def printTimestamp():
     now = time.localtime()
@@ -80,12 +81,20 @@ while True:
 
         for i in btc_product:
             symbol = i['symbol']
-            history = client.get_historical_klines(symbol, Client.KLINE_INTERVAL_1HOUR, "4 hour ago UTC")
+            mode_str = ""
+            if MODE == 15:
+                mode_str = "1 hour ago UTC"
+                kline = Client.KLINE_INTERVAL_15MINUTE
+            elif MODE == 60:
+                mode_str = "4 hour ago UTC"
+                kline = Client.KLINE_INTERVAL_1HOUR
+
+            history = client.get_historical_klines(symbol, kline, mode_str)
             if len(history) == 4:
                 start = round(float(history[0][3]), 9)
                 end = round(float(history[2][2]), 9)
                 up = end - start
-                new_end = round(float(history[3][2]), 9)
+                new_end = round(float(history[3][4]), 9)
 
                 if up > round(float(start) * MELONA_FACTOR, 9):
                     if isPos(history[0]) and isPos(history[1]) and isPos(history[2]) and not isPos(history[3]):
@@ -99,10 +108,10 @@ while True:
                                      'orderId': 1,
                                      'expect_buy_price': round(up * RETRACEMENT + start, 9),
                                      'prev_high': round(end, 9),
-                                     'timeout': 60 * 60 * 1}
+                                     'timeout': MODE * 60 * 1}
                             buy_trace.append(trace)
-                    #else:
-                        #print "up up : ", symbol, up, float(start) * MELONA_FACTOR
+                    else:
+                        print "up up : ", symbol, "up : %.8f" % up, "factor : %.8f" % round(float(start) * MELONA_FACTOR, 9)
             else:
                 print "num of history is not 4 : ", len(history)
 
@@ -117,12 +126,12 @@ while True:
     for i in copy_trace:
         now_price = getNowPrice(client, i['symbol'])
         i['timeout'] = i['timeout'] - 1
-        #print "buy", i['symbol'], "timeout", i['timeout'], "/ current price : %.8f" % now_price, "/ expect to buy price : %.8f" % i['expect_buy_price']
+        print "buy", i['symbol'], "timeout", i['timeout'], "/ current price : %.8f" % now_price, "/ expect to buy price : %.8f" % i['expect_buy_price']
         if now_price <= i['expect_buy_price']:
             # do low buy
             print "buy success.", i['symbol'], "/ buy price : %.8f" % now_price, "/ expect to buy price : %.8f" % i['expect_buy_price']
             i['expect_buy_price'] = now_price
-            i['timeout'] = 60 * 60 * 3
+            i['timeout'] = MODE * 60 * 3
             i['high_sell_price'] = max(i['up'] * HIGH_SELL_FACTOR + i['start'], i['expect_buy_price'] * PROFIT)
             i['low_sell_price'] = min(i['up'] * LOW_SELL_FACTOR + i['start'], i['expect_buy_price'] * LOSS)
             print "set sell trace.", i['symbol'], "/ expect to sell : %.8f" % i['high_sell_price']
@@ -160,3 +169,21 @@ while True:
 #    quantity=100,
 #    price='0.0000001')
 
+"""
+[
+    [
+        1499040000000,      # Open time
+        "0.01634790",       # Open
+        "0.80000000",       # High
+        "0.01575800",       # Low
+        "0.01577100",       # Close
+        "148976.11427815",  # Volume
+        1499644799999,      # Close time
+        "2434.19055334",    # Quote asset volume
+        308,                # Number of trades
+        "1756.87402397",    # Taker buy base asset volume
+        "28.46694368",      # Taker buy quote asset volume
+        "17928899.62484339" # Can be ignored
+    ]
+]
+"""
