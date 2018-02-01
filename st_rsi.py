@@ -6,6 +6,8 @@ import time
 import numpy as np
 import pandas as pd
 
+from stockstats import StockDataFrame as Sdf
+
 def binToDt(bin):
     ret = list()
     for v in bin:
@@ -190,9 +192,9 @@ for i in all_products:
     if 'BTC' in symbol and 'USDT' not in symbol:
         btc_product.append(i)
 
-mode_str = "2 month ago UTC"
+mode_str = "12 month ago UTC"
 kline = Client.KLINE_INTERVAL_30MINUTE
-history = client.get_historical_klines("OMGBTC", kline, mode_str)
+history = client.get_historical_klines("ETHBTC", kline, mode_str)
 history = binToDt(history)
 
 data = {
@@ -202,19 +204,40 @@ data = {
 }
 df = pd.DataFrame(data["data"]["candles"], columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
 print df
-def testStRsi(df, period, multiplier):
-    df = RSI(df)
+
+def testStRsi(df, rsi, bandwidth, period, multiplier):
+    df = RSI(df, 'Close', rsi)
     df = SuperTrend(df, period, multiplier)
+    #stock = Sdf.retype(df)
 
     prev = "nan"
+    prev_price = 0.0
+    profit_target = 1.1
+    stop_loss = 0.9
     cal = list()
     for index, row in df.iterrows():
         stx = 'STX_' + str(period)+ '_' + str(multiplier)
-        if prev == "down" and row['RSI_21'] >= 53 and row[stx] == "up":
+        if prev_price == 0.0 and prev == "down" and row['RSI_' + str(rsi)] >= 50 + bandwidth and row[stx] == "up":
             cal.append(["buy", row['Close']])
+            prev_price = row['Close']
+            #print "BUY", row['Close']
             #print "buy", exchange.iso8601(row['Date']), index, row['Close']
-        if prev == "up" and row['RSI_21'] <= 47 and row[stx] == "down":
+        elif prev_price > 0.0 and prev == "up" and row['RSI_'+ str(rsi)] <= 50 - bandwidth and row[stx] == "down":
             cal.append(["sell", row['Close']])
+            prev_price = 0.0
+            #print "SELL", row['Close']
+        #if prev_price > 0.0:
+            #print "DEBUG!!", row['Close'], prev_price * profit_target
+            #if row['Close'] >= prev_price * profit_target:
+                #cal.append(["sell", row['Close']])
+                #prev_price = 0.0
+                #print "DEBUG3", row['Close']
+            #elif row['Close'] <= prev_price * stop_loss:
+                #cal.append(["sell", row['Close']])
+                #prev_price = 0.0
+                #print "DEBUG4", row['Close']
+        #if prev == "up" and row['RSI_'+ str(rsi)] >= 70 :
+            #cal.append(["sell", row['Close']])
             #print "sell", exchange.iso8601(row['Date']), index, row['Close']
         prev = row[stx]
 
@@ -229,8 +252,20 @@ def testStRsi(df, period, multiplier):
 
     return profit
 
-for i in range(1, 15):
-    ret = testStRsi(df, i, 1)
-    if ret > 0.0:
-        print i, "%.8f"%ret
+cnt = 0
+avg = 0.0
+
+print testStRsi(df, 7, 3, 3, 39 / 10.0)
+"""
+for j in range(2, 5):
+    for k in range(20, 40):
+        ret = testStRsi(df, 7, 3, j, k / 10.0)
+        cnt = cnt + 1
+        avg = avg + ret
+        #if ret > 0.0:
+        #if ret > df['Close'].iloc[-1] - df['Close'].iloc[0]:
+        print j, k / 10.0, "%.8f"%ret
+"""
+cnt = 1
+print "avg: ", avg / cnt, "zonber: ", df['Close'].iloc[-1] - df['Close'].iloc[0]
 
