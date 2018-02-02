@@ -1,6 +1,7 @@
 from binance.client import Client
 from binance.enums import *
 
+import os
 import ccxt
 import time
 import numpy as np
@@ -181,8 +182,10 @@ binance = ccxt.binance({'verbose': True})
 print('Exchange UTC time:', exchange_time, exchange.iso8601(exchange_time))
 print('Your UTC time:', your_time, exchange.iso8601(your_time))
 
-api_key = "EDT2ijcCZN2XA80qUOEYjPDdB8Y6TZUNvZ8alYy1lhlPVL1HLGmIh0pNKEcor6Iv"
-api_secret = "d1fTcDdbtUIwZtx3D6ML5WXw8UjpHO7LXogwYgA3KrKgc8c51yzKxYTxGSpeOc13"
+# Add keys to .env file with command:
+# echo 'export api_key="<API_KEY>"' >> .env
+api_key = os.environ['api_key']
+api_secret = os.environ['api_secret']
 client = Client(api_key, api_secret)
 
 all_products = client.get_products()['data']
